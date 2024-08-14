@@ -1,11 +1,24 @@
+# -*- coding: utf-8 -*-
+"""
+Estimate Relaxation from Band Powers
+
+This example shows how to buffer, epoch, and transform EEG data from a single
+electrode into values for each of the classic frequencies (e.g. alpha, beta, theta)
+Furthermore, it shows how ratios of the band powers can be used to estimate
+mental state for neurofeedback.
+
+The neurofeedback protocols described here are inspired by
+*Neurofeedback: A Comprehensive Review on System Design, Methodology and Clinical Applications* by Marzbani et. al
+
+Adapted from https://github.com/NeuroTechX/bci-workshop
+"""
+
 import numpy as np  # Module that simplifies computations on matrices
-import matplotlib.pyplot as plt  # Module used for plotting
 from pylsl import StreamInlet, resolve_byprop  # Module to receive EEG data
-import utils  # Our own utility functions
+import muselsl_utils  # Our own utility functions
+
 
 # Handy little enum to make code more readable
-
-
 class Band:
     Delta = 0
     Theta = 1
@@ -13,28 +26,28 @@ class Band:
     Beta = 3
 
 
-""" EXPERIMENTAL PARAMETERS """
-# Modify these to change aspects of the signal processing
-
-# Length of the EEG data buffer (in seconds)
-# This buffer will hold last n seconds of data and be used for calculations
-BUFFER_LENGTH = 5
-
-# Length of the epochs used to compute the FFT (in seconds)
-EPOCH_LENGTH = 1
-
-# Amount of overlap between two consecutive epochs (in seconds)
-OVERLAP_LENGTH = 0.8
-
-# Amount to 'shift' the start of each next consecutive epoch
-SHIFT_LENGTH = EPOCH_LENGTH - OVERLAP_LENGTH
-
 # Index of the channel(s) (electrodes) to be used
 # 0 = left ear, 1 = left forehead, 2 = right forehead, 3 = right ear
 INDEX_CHANNEL = [0]
 
-if __name__ == "__main__":
 
+class NeuroFeedback:
+    def __init__(self):
+        self.buffer_length = 5
+        self.epoch_length = 1
+        self.overlap_length = 0.8
+        self.shift_length = 0.2
+
+    @staticmethod
+    def connect_to_stream(self):
+        print("Stay away from skunks")
+
+    @staticmethod
+    def get_delta_value():
+        return smooth_band_powers[Band.Delta]
+
+
+if __name__ == "__main__":
     """ 1. CONNECT TO EEG STREAM """
 
     # Search for active LSL streams
@@ -91,18 +104,18 @@ if __name__ == "__main__":
             ch_data = np.array(eeg_data)[:, INDEX_CHANNEL]
 
             # Update EEG buffer with the new data
-            eeg_buffer, filter_state = utils.update_buffer(
+            eeg_buffer, filter_state = muselsl_utils.update_buffer(
                 eeg_buffer, ch_data, notch=True,
                 filter_state=filter_state)
 
             """ 3.2 COMPUTE BAND POWERS """
             # Get newest samples from the buffer
-            data_epoch = utils.get_last_data(eeg_buffer,
+            data_epoch = muselsl_utils.get_last_data(eeg_buffer,
                                              EPOCH_LENGTH * fs)
 
             # Compute band powers
-            band_powers = utils.compute_band_powers(data_epoch, fs)
-            band_buffer, _ = utils.update_buffer(band_buffer,
+            band_powers = muselsl_utils.compute_band_powers(data_epoch, fs)
+            band_buffer, _ = muselsl_utils.update_buffer(band_buffer,
                                                  np.asarray([band_powers]))
             # Compute the average band powers for all epochs in buffer
             # This helps to smooth out noise

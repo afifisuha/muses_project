@@ -39,10 +39,6 @@ class NeuroFeedback:
         self.shift_length = 0.2
 
     @staticmethod
-    def connect_to_stream(self):
-        print("Stay away from skunks")
-
-    @staticmethod
     def get_delta_value():
         return smooth_band_powers[Band.Delta]
 

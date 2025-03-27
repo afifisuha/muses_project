@@ -25,7 +25,7 @@ class MyApp(App):
     def build(self):
         parent = Widget()
         sound_btn = Button(text="Play sound", pos=(350, 300))
-        search_btn = Button(text="Search for streams", pos=(400, 300))
+        search_btn = Button(text="Search for streams", pos=(600, 300))
         sound_btn.bind(on_press=self.play_sound)
         search_btn.bind(on_press=self.connect_to_streams)
         # TODO: Update the label with the EEG data
@@ -47,11 +47,11 @@ class MyApp(App):
     def play_sound(self, obj):
         self.sound.play()
 
-    def connect_to_streams(self):
-        self.title_label.text = str('Looking for an EEG stream...')
+    def connect_to_streams(self, obj):
+        self.title_label.text = "Looking for an EEG stream..."
         streams = resolve_byprop('type', 'EEG', timeout=2)
         if len(streams) == 0:
-            raise RuntimeError('Can\'t find EEG stream.')
+            self.title_label.text = "No muses found!"
 
 
 if __name__ == '__main__':

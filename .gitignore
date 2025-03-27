@@ -1,2 +1,7 @@
 bin/*
 .idea/*
+build/*
+dist/*
+.buildozer/*
+Muse\ S\ Project.spec
+*.deb

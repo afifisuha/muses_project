@@ -84,13 +84,13 @@ class MuseController:
             f.write(buffer)
 
     def acquire_data(self):
-            eeg_data, timestamp = self.inlet.pull_chunk(timeout=1, max_samples=int(self.shift_length * self.s_rate))
-            eeg_data = np.array(eeg_data)[:,:4]
-            cutoff = self.eeg_buffer.shape[0] - eeg_data.shape[0]
-            self.eeg_buffer = np.concatenate((eeg_data, self.eeg_buffer[:cutoff]), axis=0)
-            epoch = self.eeg_buffer[:self.epoch_length * self.s_rate]
-            self.band_powers = np.concatenate((self.band_powers, compute_band_powers(epoch, self.s_rate)), axis=1)
-            self.band_powers = self.band_powers[:, -1000:]
+        eeg_data, timestamp = self.inlet.pull_chunk(timeout=1, max_samples=int(self.shift_length * self.s_rate))
+        eeg_data = np.array(eeg_data)[:,:4]
+        cutoff = self.eeg_buffer.shape[0] - eeg_data.shape[0]
+        self.eeg_buffer = np.concatenate((eeg_data, self.eeg_buffer[:cutoff]), axis=0)
+        epoch = self.eeg_buffer[:self.epoch_length * self.s_rate]
+        self.band_powers = np.concatenate((self.band_powers, compute_band_powers(epoch, self.s_rate)), axis=1)
+        self.band_powers = self.band_powers[:, -1000:]
 
 if __name__ == '__main__':
     controller = MuseController()

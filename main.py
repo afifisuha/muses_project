@@ -1,5 +1,4 @@
 from pylsl import StreamInlet, resolve_byprop  # Module to receive EEG data
-from keyboard import on_press
 from matplotlib import pyplot as plt
 from matplotlib import animation
 from playsound import playsound
@@ -7,13 +6,14 @@ from playsound import playsound
 import numpy as np
 import time
 
-def compute_band_powers(eegdata, fs):
+def compute_band_powers(eegdata, fs, band:int=1):
     """Extract the features (band powers) from the EEG.
 
     Args:
         eegdata (numpy.ndarray): array of dimension [number of samples,
                 number of channels]
         fs (float): sampling frequency of eegdata
+        band: If not None, return only a specific band's powers.
 
     Returns:
         (numpy.ndarray): feature matrix of shape [number of feature points,
@@ -36,18 +36,20 @@ def compute_band_powers(eegdata, fs):
     # Average of band powers
     # Delta <4
     ind_delta, = np.where(f < 4)
-    meanDelta = np.mean(PSD[ind_delta, :], axis=0)
+    delta = np.mean(PSD[ind_delta, :], axis=0)
     # Theta 4-8
     ind_theta, = np.where((f >= 4) & (f <= 8))
-    meanTheta = np.mean(PSD[ind_theta, :], axis=0)
+    theta = np.mean(PSD[ind_theta, :], axis=0)
     # Alpha 8-12
     ind_alpha, = np.where((f >= 8) & (f <= 12))
-    meanAlpha = np.mean(PSD[ind_alpha, :], axis=0)
+    alpha = np.mean(PSD[ind_alpha, :], axis=0)
     # Beta 12-30
     ind_beta, = np.where((f >= 12) & (f < 30))
-    meanBeta = np.mean(PSD[ind_beta, :], axis=0)
+    beta = np.mean(PSD[ind_beta, :], axis=0)
 
-    feature_vector = np.array((meanDelta, meanTheta, meanAlpha, meanBeta))
+    feature_vector = np.array((delta, theta, alpha, beta))
+    if band is not None:
+        feature_vector = feature_vector[band]
     feature_vector = np.log10(feature_vector)
     return feature_vector
 
@@ -89,39 +91,32 @@ class MuseController:
         cutoff = self.eeg_buffer.shape[0] - eeg_data.shape[0]
         self.eeg_buffer = np.concatenate((eeg_data, self.eeg_buffer[:cutoff]), axis=0)
         epoch = self.eeg_buffer[:self.epoch_length * self.s_rate]
-        self.band_powers = np.concatenate((self.band_powers, compute_band_powers(epoch, self.s_rate)), axis=1)
+        band_powers = compute_band_powers(epoch, self.s_rate)[:, np.newaxis]
+        self.band_powers = np.concatenate((self.band_powers, band_powers), axis=1)
         self.band_powers = self.band_powers[:, -1000:]
 
 if __name__ == '__main__':
     controller = MuseController()
-    done = False
-    def press_event(event):
-        global done
-        if event.name == 'q':
-            done = True
-    on_press(press_event)
     if controller.connect_to_streams() == 0:
-        # print("Running, press Q to stop")
-        # while not done:
-        #     controller.acquire_data()
         t = np.linspace(1, 1000, 1000)
         fig, axes = plt.subplots(nrows=2, ncols=2)
-        delta_line, = axes[0,0].plot(t[0], controller.band_powers[0])
-        axes[0,0].set_title("Delta")
-        theta_line, = axes[0,1].plot(t[0], controller.band_powers[1], "tab:orange")
-        axes[0,1].set_title("Theta")
-        alpha_line, = axes[1,0].plot(t[0], controller.band_powers[2], "tab:green")
-        axes[1,0].set_title("Alpha")
-        beta_line, = axes[1,1].plot(t[0], controller.band_powers[3], "tab:red")
-        axes[1,1].set_title("Beta")
-        for ax in axes.flat:
+        lines = []
+        channels = ["left ear", "left temple", "right temple", "right ear"]
+        colors = ["blue", "orange", "green", "red"]
+        for i, ax in enumerate(axes.flat):
+            line, = ax.plot([], [], color=colors[i])  # Start with empty data
+            ax.set_title(f"Theta - {channels[i]}")
+            ax.set_xlim([0, 1000])
+            ax.set_ylim([-3, 6])  # Use set_ylim instead of duplicate set_xlim
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
-            ax.set_xlim([0, 1000])
-            ax.set_ylim([-3, 6])
+            lines.append(line)
+
 
         def update(frame):
             controller.acquire_data()
+
+            # Handle cooldown logic
             if controller.cooldown_start == 0:
                 if controller.band_powers[0].shape[0] > 10:
                     high_theta_count = 0
@@ -129,20 +124,23 @@ if __name__ == '__main__':
                         if controller.band_powers[1][-i] > 1.15:
                             high_theta_count += 1
                     if high_theta_count > 5:
-                        playsound("assets\\sounds\\vine-boom.mp3")
+                        # playsound("assets\\sounds\\vine-boom.mp3")
                         controller.cooldown_start = time.time()
             elif time.time() - controller.cooldown_start >= 1:
                 controller.cooldown_start = 0
 
-            end_frame = controller.band_powers[0].shape[0]
-            delta_line.set_xdata(t[:end_frame])
-            delta_line.set_ydata(controller.band_powers[0])
-            theta_line.set_xdata(t[:end_frame])
-            theta_line.set_ydata(controller.band_powers[1])
-            alpha_line.set_xdata(t[:end_frame])
-            alpha_line.set_ydata(controller.band_powers[2])
-            beta_line.set_xdata(t[:end_frame])
-            beta_line.set_ydata(controller.band_powers[3])
-            return delta_line, theta_line, alpha_line, beta_line
+            # Get the actual data length (up to 1000 points)
+            data_len = min(controller.band_powers.shape[1], 1000)
+
+            # Use only the most recent data points
+            data_start = max(0, controller.band_powers.shape[1] - 1000)
+            data_end = controller.band_powers.shape[1]
+
+            # Update each line with the data
+            for i, line in enumerate(lines):
+                lines[i].set_data(t[:data_len], controller.band_powers[i, data_start:data_end])
+
+            return lines
+
         ani = animation.FuncAnimation(fig, update, cache_frame_data=False, interval=100, blit=True)
         plt.show()

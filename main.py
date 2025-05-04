@@ -5,6 +5,8 @@ from playsound import playsound
 
 import numpy as np
 import time
+MAX_MEMORY = 100
+
 
 def compute_band_powers(eegdata, fs, band:int=1):
     """Extract the features (band powers) from the EEG.
@@ -58,7 +60,7 @@ class MuseController:
         self.buffer_length = 5
         self.epoch_length = 1
         self.overlap_length = 0.8
-        self.shift_length = 0.2
+        self.shift_length = self.epoch_length - self.overlap_length
         self.band_powers = np.ones((4, 1))
         self.cooldown_start = 0
         self.inlet = None
@@ -90,15 +92,15 @@ class MuseController:
         eeg_data = np.array(eeg_data)[:,:4]
         cutoff = self.eeg_buffer.shape[0] - eeg_data.shape[0]
         self.eeg_buffer = np.concatenate((eeg_data, self.eeg_buffer[:cutoff]), axis=0)
-        epoch = self.eeg_buffer[:self.epoch_length * self.s_rate]
+        epoch = self.eeg_buffer[:int(self.epoch_length * self.s_rate)]
         band_powers = compute_band_powers(epoch, self.s_rate)[:, np.newaxis]
         self.band_powers = np.concatenate((self.band_powers, band_powers), axis=1)
-        self.band_powers = self.band_powers[:, -1000:]
+        self.band_powers = self.band_powers[:, -MAX_MEMORY:]
 
 if __name__ == '__main__':
     controller = MuseController()
     if controller.connect_to_streams() == 0:
-        t = np.linspace(1, 1000, 1000)
+        t = np.linspace(1, MAX_MEMORY, MAX_MEMORY)
         fig, axes = plt.subplots(nrows=2, ncols=2)
         lines = []
         channels = ["left ear", "left temple", "right temple", "right ear"]
@@ -106,7 +108,7 @@ if __name__ == '__main__':
         for i, ax in enumerate(axes.flat):
             line, = ax.plot([], [], color=colors[i])  # Start with empty data
             ax.set_title(f"Theta - {channels[i]}")
-            ax.set_xlim([0, 1000])
+            ax.set_xlim([0, MAX_MEMORY])
             ax.set_ylim([-3, 6])  # Use set_ylim instead of duplicate set_xlim
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
@@ -129,11 +131,11 @@ if __name__ == '__main__':
             elif time.time() - controller.cooldown_start >= 1:
                 controller.cooldown_start = 0
 
-            # Get the actual data length (up to 1000 points)
-            data_len = min(controller.band_powers.shape[1], 1000)
+            # Get the actual data length (up to MAX_MEMORY points)
+            data_len = min(controller.band_powers.shape[1], MAX_MEMORY)
 
             # Use only the most recent data points
-            data_start = max(0, controller.band_powers.shape[1] - 1000)
+            data_start = max(0, controller.band_powers.shape[1] - MAX_MEMORY)
             data_end = controller.band_powers.shape[1]
 
             # Update each line with the data

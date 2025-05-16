@@ -4,78 +4,22 @@ from muselsl.stream import list_muses
 from muselsl.muse import Muse
 from functools import partial
 from playsound import playsound
-from keyboard import on_press
 import asyncio
 import numpy as np
 from scipy.signal import butter, lfilter
-from os import path, getcwd
-import time
 MAX_MEMORY = 2000
 EEG_CHANNELS = 4
 ACC_CHANNELS = GYRO_CHANNELS = 3
 
-def compute_band_powers(eegdata, fs, band:int=1):
-    """Extract the features (band powers) from the EEG.
-
-    Args:
-        eegdata (numpy.ndarray): array of dimension [number of samples,
-                number of channels]
-        fs (float): sampling frequency of eegdata
-        band: If not None, return only a specific band's powers.
-
-    Returns:
-        (numpy.ndarray): feature matrix of shape [number of feature points,
-            number of different features]
-    """
-    # 1. Compute the PSD
-    winSampleLength, nbCh = eegdata.shape
-
-    # Apply Hamming window
-    w = np.hamming(winSampleLength)
-    dataWinCentered = eegdata - np.mean(eegdata, axis=0)  # Remove offset
-    dataWinCenteredHam = (dataWinCentered.T * w).T
-
-    NFFT = winSampleLength // 2 + 1
-    Y = np.fft.fft(dataWinCenteredHam, n=NFFT, axis=0) / winSampleLength
-    PSD = 2 * np.abs(Y[0:int(NFFT / 2), :])
-    f = fs / 2 * np.linspace(0, 1, int(NFFT / 2))
-
-    # SPECTRAL FEATURES
-    # Average of band powers
-    # Delta <4
-    ind_delta, = np.where(f < 4)
-    delta = np.mean(PSD[ind_delta, :], axis=0)
-    # Theta 4-8
-    ind_theta, = np.where((f >= 4) & (f <= 8))
-    theta = np.mean(PSD[ind_theta, :], axis=0)
-    # Alpha 8-12
-    ind_alpha, = np.where((f >= 8) & (f <= 12))
-    alpha = np.mean(PSD[ind_alpha, :], axis=0)
-    # Beta 12-30
-    ind_beta, = np.where((f >= 12) & (f < 30))
-    beta = np.mean(PSD[ind_beta, :], axis=0)
-
-    feature_vector = np.array((delta, theta, alpha, beta))
-    if band is not None:
-        feature_vector = feature_vector[band]
-    feature_vector = np.log10(feature_vector)
-    return feature_vector
 
 class MuseController:
     def __init__(self):
-        self.buffer_length = 5
-        self.epoch_length = 1
-        self.overlap_length = 0.8
-        self.shift_length = self.epoch_length - self.overlap_length
-        self.band_powers = np.ones((4, 1))
-        self.cooldown_start = 0
-        self.time_correction = None
-        self.eeg_sample_rate = 256
-        self.eeg_buffer = None
         self.eeg_arr = np.zeros(shape=(1,EEG_CHANNELS))
         self.acc_arr = np.zeros(shape=(1,ACC_CHANNELS))
         self.gyro_arr = np.zeros(shape=(1,GYRO_CHANNELS))
         self.switching = False
+        self.rotating = False
+        self.opening_or_closing = False
         self.on = False
         self.muse = None
         self.done = False
@@ -103,7 +47,6 @@ class MuseController:
         if connected:
             self.muse.start()
 
-        self.eeg_buffer = np.ones((self.eeg_sample_rate * self.buffer_length, 4))
         return 0
 
 
@@ -143,19 +86,50 @@ def graph_eeg():
 
         def blink_detection():
             # Crude Strong Blink Detection
-            right_ear_var = np.var(controller.eeg_arr[-350:][:,0])
-            left_ear_var = np.var(controller.eeg_arr[-350:][:,3])
+            right_ear_var = np.var(controller.eeg_arr[:][:,0])
+            left_ear_var = np.var(controller.eeg_arr[:][:,3])
+            right_ear_recent_var = np.var(controller.eeg_arr[-250:][:,0])
+            left_ear_recent_var = np.var(controller.eeg_arr[-250:][:,3])
             if not controller.switching:
-                if right_ear_var > 50000 and left_ear_var > 50000:
+                if right_ear_recent_var / (right_ear_var + 1e-5) + left_ear_recent_var / (left_ear_var + 1e-5) > 5:
                     controller.switching = True
                     controller.on = ~controller.on
                     if controller.on:
                         playsound(r"assets\sounds\turn_on_beep.wav")
+                        print("On")
                     else:
                         playsound(r"assets\sounds\turn_off_beep.wav")
-            elif right_ear_var < 30000 and left_ear_var < 30000:
-                print(right_ear_var)
+                        print("Off")
+            elif right_ear_recent_var / (right_ear_var + 1e-5) + left_ear_recent_var / (left_ear_var + 1e-5) < 1:
                 controller.switching = False
+
+        def movement_detection():
+            if not controller.on:
+                return
+            # Left: Z gyro increases then decreases
+            # Up: Y gyro decreases then increases
+            z_motion = controller.gyro_arr[-100:,2] / 52
+            y_motion = controller.gyro_arr[-100:,1] / 52
+            # Enable if last motion was a while ago, rotate if new motion detected.
+            if controller.rotating:
+                controller.rotating = np.max(np.cumsum(z_motion)) > 5 or np.min(np.cumsum(z_motion)) < -5
+            elif np.abs(np.sum(z_motion)) < 5:
+                if np.max(np.cumsum(z_motion)) > 20:
+                    print(f"Rotate left {np.max(np.cumsum(z_motion)) * 2} degrees")
+                    controller.rotating = True
+                elif np.min(np.cumsum(z_motion)) < -20:
+                    print(f"Rotate right {-np.min(np.cumsum(z_motion)) * 2} degrees")
+                    controller.rotating = True
+            if controller.opening_or_closing:
+                controller.opening_or_closing = np.max(np.cumsum(y_motion)) > 5 or np.min(np.cumsum(y_motion)) < -5
+            elif np.abs(np.sum(y_motion)) < 5:
+                if np.max(np.cumsum(y_motion)) > 9:
+                    print(f"Close {np.max(np.cumsum(y_motion)) * 3} degrees")
+                    controller.opening_or_closing = True
+                if np.min(np.cumsum(y_motion)) < -9:
+                    print(f"Open {-np.min(np.cumsum(y_motion)) * 3} degrees")
+                    controller.opening_or_closing = True
+
 
         def update(_):
             for j in range(4):
@@ -167,7 +141,7 @@ def graph_eeg():
                 lines[j].set_data(t[:controller.gyro_arr.shape[0]],controller.gyro_arr[:, j - 7])
 
             blink_detection()
-
+            movement_detection()
             # Wait for more data.
             loop = asyncio.get_event_loop()
             loop.run_until_complete(asyncio.sleep(0.1))

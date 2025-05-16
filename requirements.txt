@@ -3,4 +3,4 @@ matplotlib~=3.10.0
 numpy~=2.2.2
 pylsl~=1.17.6
 playsound~=1.2.2
-keyboard~=0.13.5
+scipy~=1.15.1

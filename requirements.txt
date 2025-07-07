@@ -4,3 +4,6 @@ numpy~=2.2.2
 pylsl~=1.17.6
 playsound~=1.2.2
 scipy~=1.15.1
+asyncio~=3.4.3
+bleak~=0.22.3
+protocol~=0.37

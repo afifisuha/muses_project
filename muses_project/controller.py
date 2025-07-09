@@ -1,3 +1,5 @@
+import asyncio
+
 from bleak import BleakClient
 from muselsl.stream import list_muses
 from muselsl.muse import Muse
@@ -15,6 +17,7 @@ class ProjectController:
         self.eeg_arr = np.zeros(shape=(1,EEG_CHANNELS))
         self.acc_arr = np.zeros(shape=(1,ACC_CHANNELS))
         self.gyro_arr = np.zeros(shape=(1,GYRO_CHANNELS))
+        self.loop = asyncio.get_event_loop()
         self.switching = False
         self.rotating = False
         self.opening_or_closing = False
@@ -81,18 +84,22 @@ class ProjectController:
         elif np.abs(np.sum(z_motion)) < 5:
             if np.max(np.cumsum(z_motion)) > 20:
                 print(f"Rotate left {np.max(np.cumsum(z_motion)) * 2} degrees")
+                self.loop.run_until_complete(self.move_hand("left"))
                 self.rotating = True
             elif np.min(np.cumsum(z_motion)) < -20:
                 print(f"Rotate right {-np.min(np.cumsum(z_motion)) * 2} degrees")
+                self.loop.run_until_complete(self.move_hand("right"))
                 self.rotating = True
         if self.opening_or_closing:
             self.opening_or_closing = np.max(np.cumsum(y_motion)) > 5 or np.min(np.cumsum(y_motion)) < -5
         elif np.abs(np.sum(y_motion)) < 5:
             if np.max(np.cumsum(y_motion)) > 9:
                 print(f"Close {np.max(np.cumsum(y_motion)) * 3} degrees")
+                self.loop.run_until_complete(self.move_hand("close"))
                 self.opening_or_closing = True
             if np.min(np.cumsum(y_motion)) < -9:
                 print(f"Open {-np.min(np.cumsum(y_motion)) * 3} degrees")
+                self.loop.run_until_complete(self.move_hand("open"))
                 self.opening_or_closing = True
 
     async def connect_to_hand(self):

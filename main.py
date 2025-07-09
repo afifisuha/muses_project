@@ -9,8 +9,6 @@ if __name__ == "__main__":
     controller = ProjectController()
     loop = asyncio.get_event_loop()
     loop.run_until_complete(controller.connect_to_hand())
-    loop.run_until_complete(controller.move_hand("open"))
-    loop.run_until_complete(controller.move_hand("close"))
     controller.connect_to_stream()
     try:
         graph_eeg(controller)
